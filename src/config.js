@@ -8,6 +8,7 @@ export function normalizePrefix(p) {
   if (typeof p !== 'string') return DEFAULTS.proxyPrefix;
   const s = p.trim();
   if (s === '') return DEFAULTS.proxyPrefix;
+  if (!/^https?:\/\//.test(s)) return DEFAULTS.proxyPrefix;   // 非 http(s) 前缀 → 回退默认
   return s.endsWith('/') ? s : s + '/';
 }
 

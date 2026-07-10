@@ -49,15 +49,25 @@
       const base = chrome.runtime.getURL('src/');
       rewrite = (await import(base + 'rewrite.js')).rewrite;
       const { getConfig } = await import(base + 'config.js');
-      const cfg = await getConfig();
-      if (!cfg.enabled) return;                 // 禁用 → 完全不介入
-      proxyPrefix = cfg.proxyPrefix;
-      process();                                // 首次全量
+
+      async function applyConfig() {
+        const cfg = await getConfig();
+        proxyPrefix = cfg.enabled ? cfg.proxyPrefix : null;   // 禁用 → 停止改写
+        if (proxyPrefix) process();
+      }
+
+      await applyConfig();                                     // 首次全量
       new MutationObserver(schedule).observe(document.documentElement, {
         childList: true,
         subtree: true,
         attributes: true,
         attributeFilter: ['href', 'data-clipboard-copy-text'],
+      });
+      // popup 改配置后实时生效（镜像切换场景），免刷新
+      chrome.storage.onChanged.addListener((changes, area) => {
+        if (area !== 'sync') return;
+        if (!changes.enabled && !changes.proxyPrefix) return;
+        applyConfig();
       });
     } catch (err) {
       console.error('[github-proxy] init failed', err);
