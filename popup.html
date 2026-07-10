@@ -4,17 +4,19 @@
   <meta charset="utf-8">
   <title>GitHub 加速链接</title>
   <style>
-    body { font-family: system-ui, sans-serif; padding: 12px; min-width: 280px; }
-    label { display: block; margin: 8px 0 4px; }
-    input[type="text"] { width: 100%; box-sizing: border-box; padding: 4px; }
-    #saved { color: #1a7f37; font-size: 12px; margin-top: 8px; }
+    body { font-family: system-ui, sans-serif; padding: 12px; min-width: 300px; }
+    .enable { display: block; font-weight: 600; margin-bottom: 8px; }
+    #proxies { margin-bottom: 8px; }
+    .proxy { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; }
+    .ms { color: #57606a; font-size: 12px; min-width: 64px; text-align: right; }
+    .ms.timeout { color: #cf222e; }
+    #retest { width: 100%; padding: 6px; cursor: pointer; }
   </style>
 </head>
 <body>
-  <label><input type="checkbox" id="enabled"> 启用加速</label>
-  <label for="prefix">代理前缀</label>
-  <input type="text" id="prefix" placeholder="https://gh-proxy.org/">
-  <p id="saved" hidden>已保存</p>
+  <label class="enable"><input type="checkbox" id="enabled"> 启用加速</label>
+  <div id="proxies"></div>
+  <button id="retest">重新测速</button>
   <script type="module" src="popup.js"></script>
 </body>
 </html>
