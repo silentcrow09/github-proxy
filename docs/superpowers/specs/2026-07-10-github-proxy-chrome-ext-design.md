@@ -41,11 +41,12 @@ clone：
 
 ## 3. 非目标（后续扩展，不在本次范围）
 
-- **多镜像自动选路**：`https://v4.gh-proxy.org/`、`https://cdn.gh-proxy.org/`、`https://ghproxy.net/` 等，按延迟/可用性自动选最优前缀。
+- **多镜像故障切换**：当前是单选（一次一个镜像生效）+ 测速择优；"主镜像失败自动切下一个"的多选故障切换仍属后续。
+- **后台定时测速**：当前仅在 popup 打开时测速。
 - **扩展改写范围**：archive（Download ZIP）、raw、gist。
 - **网络层拦截**：不通过 `declarativeNetRequest` 改请求（会破坏页面浏览）。
 
-> 关于自动选路的可扩展性：核心函数 `rewrite(url, prefix)` 把代理前缀当**参数**传入。未来自动选路只需把"prefix 从哪来"从「读单个字符串」换成「从镜像列表里选最优」，**改写逻辑零改动**。因此 v1 不提前搭镜像列表（YAGNI），只存单个可编辑前缀。
+> 关于自动选路：核心函数 `rewrite(url, prefix)` 把代理前缀当**参数**传入。本次已实现"从内置镜像列表测速择优"的轻量选路；完整故障切换（多选 + 失败重试）留待后续。
 
 ## 4. 架构
 
@@ -109,17 +110,20 @@ export function rewrite(url, prefix) { ... }
 - MutationObserver 观察 `subtree` + `childList` + `attributes`，加 debounce（~200ms），避免高频改写卡顿。
 - 所有改写幂等：已带前缀的不重复拼接。
 
-## 8. 配置与 popup
+## 8. 配置与 popup（内置镜像 + 测速）
 
 - 存储：`chrome.storage.sync`
 - 键：
   - `enabled`：bool，默认 `true`
-  - `proxyPrefix`：string，默认 `https://gh-proxy.org/`
-- popup：
-  - 一个开关（启用/禁用）
-  - 一个前缀输入框
-  - 改动即时或按钮保存（实现时定，倾向即时 `storage.sync.set`）
-- content.js 启动读配置；`enabled === false` 时不注册任何改写。
+  - `proxyPrefix`：string，当前生效的镜像 URL（content.js 读这个，**不变**）
+  - `userSelected`：bool，用户是否手动选过镜像（默认未设=自动选最优）
+- 镜像清单 `PROXIES`（`config.js` 常量，7 个）：
+  - `gh-proxy.org` / `gh-proxy v4` / `gh-proxy cdn` / `ghproxy.net` / `ghfast.top` / `gh-proxy.com` / `ghps.cc`
+- **测速**：popup 打开时 + 「重新测速」按钮，对每个镜像根 URL 用 `fetch(url, {mode:'no-cors', cache:'no-store'})` + `AbortController` 超时（5s）计时，返回 `ms` 或 `null`（超时/失败）。no-cors 请求照常发出、可计时但读不到 body，**无需新增 host 权限**。不做后台定时测速（YAGNI）。
+- **选择**：radio 单选，每项显示 `名称 … 123ms` 或 `超时`。
+  - `!userSelected`（首次/未手动改过）→ 自动选延迟最低的（全挂回退 `PROXIES[0]`），并落地 `proxyPrefix`。
+  - 用户点选某项 → 存 `proxyPrefix` + `userSelected=true`（粘住，后续测速不再自动覆盖）。
+- content.js 无需改动：proxyPrefix 变化时已有的 `chrome.storage.onChanged` 监听会实时更新打开的 GitHub 标签。
 
 ## 9. Manifest V3 权限（最小化）
 
