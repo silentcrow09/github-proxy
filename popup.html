@@ -3,20 +3,45 @@
 <head>
   <meta charset="utf-8">
   <title>GitHub 加速链接</title>
-  <style>
-    body { font-family: system-ui, sans-serif; padding: 12px; min-width: 300px; }
-    .enable { display: block; font-weight: 600; margin-bottom: 8px; }
-    #proxies { margin-bottom: 8px; }
-    .proxy { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; }
-    .ms { color: #57606a; font-size: 12px; min-width: 64px; text-align: right; }
-    .ms.timeout { color: #cf222e; }
-    #retest { width: 100%; padding: 6px; cursor: pointer; }
-  </style>
+  <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <label class="enable"><input type="checkbox" id="enabled"> 启用加速</label>
-  <div id="proxies"></div>
-  <button id="retest">重新测速</button>
+  <header class="header">
+    <img src="icons/icon32.png" alt="" class="logo" width="24" height="24">
+    <div class="title">
+      <h1>GitHub 加速</h1>
+      <p class="subtitle">Release 下载 / clone 自动加速</p>
+    </div>
+  </header>
+
+  <main class="main">
+    <label class="switch-row">
+      <span class="switch-text">
+        <strong>启用加速</strong>
+        <small>关闭后页面链接保持原样</small>
+      </span>
+      <span class="switch">
+        <input type="checkbox" id="enabled">
+        <span class="slider"></span>
+      </span>
+    </label>
+
+    <div class="section-head">
+      <span class="section-title">镜像列表</span>
+      <span class="section-hint" id="status">测速中…</span>
+    </div>
+    <div id="proxies" class="proxy-list"></div>
+
+    <button id="retest" class="btn btn-secondary">
+      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M8 2a5.99 5.99 0 0 0-4.95 2.6L1.5 3.5v4h4L3.9 5.9A4.5 4.5 0 1 1 3.5 8H2a6 6 0 1 0 6-6z"/></svg>
+      重新测速
+    </button>
+  </main>
+
+  <footer class="footer">
+    <button id="settings" class="btn btn-link">管理加速地址</button>
+  </footer>
+
   <script type="module" src="popup.js"></script>
 </body>
 </html>

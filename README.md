@@ -6,6 +6,7 @@ Chrome MV3 扩展：访问 `github.com` 时，自动把 **Release 资源下载�
 
 - **原地替换**：Release 下载链接、clone 输入框地址直接变成加速地址，复制即用
 - **内置 7 个镜像 + 测速**：popup 里 radio 列表，每项显示延迟 `ms`，默认勾选当前网络最快的那个
+- **镜像管理**：设置页可对**所有镜像（含内置项）**添加 / 修改 / 删除，一键「恢复默认镜像」
 - **实时切换**：在 popup 改镜像后，已打开的 GitHub 标签无需刷新即生效
 - **严格范围**：只改 Release 资源 + `.git` clone，不碰页面导航链接（不影响正常浏览）
 - **幂等**：重复触发不会 `gh-proxy.org/gh-proxy.org/...`
@@ -19,7 +20,7 @@ Chrome MV3 扩展：访问 `github.com` 时，自动把 **Release 资源下载�
 4. 访问任意 GitHub Release 页或仓库「Code」面板即可看到效果
 5. 点扩展图标打开 popup，测速并选择镜像
 
-## 内置镜像
+## 内置镜像（默认）
 
 | 名称 | 地址 |
 |---|---|
@@ -31,7 +32,18 @@ Chrome MV3 扩展：访问 `github.com` 时，自动把 **Release 资源下载�
 | gh-proxy.com | `https://gh-proxy.com/` |
 | ghps.cc | `https://ghps.cc/` |
 
-镜像站点变化频繁，失效的会显示「超时」，换一个即可。要增删镜像，编辑 `src/config.js` 的 `PROXIES` 常量（`{ name, url }`，url 须为 `https://` 且以 `/` 结尾）。
+镜像站点变化频繁，失效的会显示「超时」，换一个即可。
+
+### 管理镜像（含内置项）
+
+点 popup 底部「管理加速地址」，或到 `chrome://extensions` → 本扩展 → 「详细信息」→「扩展程序选项」打开设置页：
+
+- **添加**：在「添加镜像」表单填入名称（可选）和地址（`http(s)://` 开头），自动补尾斜杠、按地址去重
+- **修改 / 删除**：列表中每项均可行内编辑或删除，**内置项同样可改可删**
+- **恢复默认镜像**：点列表标题旁的按钮，用内置默认列表覆盖当前全部镜像
+- **实时同步**：改动经 `chrome.storage.sync` 广播，popup 与已打开的 GitHub 页面无需刷新即生效
+
+> 首次安装时，内置 7 个镜像作为种子写入 `chrome.storage`，之后它们与用户添加的镜像一视同仁，全部可编辑。改 `src/config.js` 的 `PROXIES` 常量只会影响「默认值 / 恢复默认」的来源，不会直接覆盖已存储列表。
 
 ## 改写规则
 
@@ -45,11 +57,12 @@ Chrome MV3 扩展：访问 `github.com` 时，自动把 **Release 资源下载�
 ## 项目结构
 
 ```
-manifest.json          MV3 配置（content script + web_accessible_resources）
+manifest.json          MV3 配置（content script + options_ui + web_accessible_resources）
 src/rewrite.js         纯函数 rewrite(url, prefix) → 加速 URL | null
-src/config.js          DEFAULTS / normalizePrefix / getConfig / PROXIES / ping / testProxies
+src/config.js          DEFAULTS / normalizePrefix / getConfig / PROXIES(种子) / 统一镜像存储(get/set/reset) / ping / testProxies
 src/content.js         DOM 扫描 + MutationObserver，动态 import 上面两个 ESM
-popup.html / popup.js  镜像 radio 列表 + 测速 UI
+popup.html / .css / .js   镜像 radio 列表 + 测速 UI（含开关、状态、入口按钮）
+options.html / .css / .js 镜像管理页（内置+自定义统一增 / 改 / 删 + 恢复默认）
 tests/                 node:test 单测（rewrite + config）
 ```
 

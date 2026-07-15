@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>加速地址管理 · GitHub 加速链接</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="page">
+    <header class="page-header">
+      <img src="icons/icon32.png" alt="" width="28" height="28" class="logo">
+      <div>
+        <h1>加速地址管理</h1>
+        <p class="sub">添加、修改、删除加速镜像（含内置项）。改动即时同步到 popup 与已打开的 GitHub 页面。</p>
+      </div>
+    </header>
+
+    <!-- 新增表单 -->
+    <section class="card">
+      <h2 class="card-title">添加镜像</h2>
+      <form id="addForm" class="form-row">
+        <input type="text" id="addName" class="input" placeholder="名称（可选，如 我的镜像）" maxlength="40">
+        <input type="url" id="addUrl" class="input input-grow" placeholder="地址 https://example.com/" required>
+        <button type="submit" class="btn btn-primary">添加</button>
+      </form>
+      <p id="addError" class="error" hidden></p>
+    </section>
+
+    <!-- 镜像列表（内置 + 自定义统一可编辑） -->
+    <section class="card">
+      <div class="card-title-row">
+        <h2 class="card-title">镜像列表 <span id="count" class="count">0</span></h2>
+        <button id="reset" class="btn btn-sm btn-text-danger" title="恢复为内置的默认镜像">恢复默认镜像</button>
+      </div>
+      <div id="list" class="list"></div>
+      <p id="emptyHint" class="empty" hidden>列表为空，使用上方表单添加，或点「恢复默认镜像」。</p>
+    </section>
+  </div>
+
+  <script type="module" src="options.js"></script>
+</body>
+</html>
