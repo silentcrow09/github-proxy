@@ -3,7 +3,7 @@
 import {
   PROXIES_KEY, normalizeProxyUrl, isValidProxyUrl,
   getStoredProxies, setStoredProxies, resetProxies,
-} from './src/config.js';
+} from '../src/config.js';
 
 const addForm = document.getElementById('addForm');
 const addNameEl = document.getElementById('addName');

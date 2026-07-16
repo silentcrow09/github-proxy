@@ -61,8 +61,10 @@ manifest.json          MV3 配置（content script + options_ui + web_accessible
 src/rewrite.js         纯函数 rewrite(url, prefix) → 加速 URL | null
 src/config.js          DEFAULTS / normalizePrefix / getConfig / PROXIES(种子) / 统一镜像存储(get/set/reset) / ping / testProxies
 src/content.js         DOM 扫描 + MutationObserver，动态 import 上面两个 ESM
-popup.html / .css / .js   镜像 radio 列表 + 测速 UI（含开关、状态、入口按钮）
-options.html / .css / .js 镜像管理页（内置+自定义统一增 / 改 / 删 + 恢复默认）
+popup/                 镜像 radio 列表 + 测速 UI（含开关、状态、入口按钮）
+  popup.html / .css / .js
+options/               镜像管理页（内置+自定义统一增 / 改 / 删 + 恢复默认）
+  options.html / .css / .js
 tests/                 node:test 单测（rewrite + config）
 ```
 
