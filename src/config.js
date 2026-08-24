@@ -1,7 +1,7 @@
 // src/config.js
 // 配置默认值、前缀归一化、从 chrome.storage 读取配置。
 
-export const DEFAULTS = { enabled: true, proxyPrefix: 'https://gh-proxy.org/' };
+export const DEFAULTS = { enabled: true, enhanced: false, proxyPrefix: 'https://gh-proxy.org/' };
 
 /** 归一化代理前缀：保证非空且以 '/' 结尾，否则回退 DEFAULTS.proxyPrefix。 */
 export function normalizePrefix(p) {
@@ -32,7 +32,7 @@ export function nextId() {
 }
 
 /** 从 url 猜一个名字（取 host）。 */
-function deriveName(url) {
+export function deriveName(url) {
   try { return new URL(url).host; } catch { return url; }
 }
 
@@ -112,6 +112,7 @@ export async function getConfig() {
   const stored = await chrome.storage.sync.get(DEFAULTS);
   return {
     enabled: stored.enabled === true,
+    enhanced: stored.enhanced === true,
     proxyPrefix: normalizePrefix(stored.proxyPrefix),
   };
 }

@@ -3,6 +3,7 @@
 import {
   PROXIES_KEY, normalizeProxyUrl, isValidProxyUrl,
   getStoredProxies, setStoredProxies, resetProxies,
+  nextId, deriveName, DEFAULTS,
 } from './src/config.js';
 
 const addForm = document.getElementById('addForm');
@@ -102,7 +103,7 @@ async function add(rawName, rawUrl) {
   const list = await getStoredProxies();
   if (list.some((p) => p.url === url)) return '该镜像已存在';
   const name = rawName.trim() || deriveName(url);
-  list.push({ id: nextLocalId(list), name, url });
+  list.push({ id: nextId(), name, url });
   await setStoredProxies(list);
   return null;
 }
@@ -121,27 +122,19 @@ async function update(id, rawName, rawUrl) {
   return null;
 }
 
-/** 删除某项。若删的是当前生效镜像，回退到自动择优。 */
+/** 删除某项。若删的是当前生效镜像，回退到剩余列表首个或默认值。 */
 async function remove(id) {
   const list = await getStoredProxies();
   const removed = list.find((p) => p.id === id);
   const next = list.filter((p) => p.id !== id);
   await setStoredProxies(next);
-  // 若删的正是当前生效前缀，清除粘住标记，交由测速重新择优
+  // 若删的正是当前生效前缀，清除粘住标记，回退到剩余列表首个或默认值
   const cfg = await chrome.storage.sync.get(['proxyPrefix', 'userSelected']);
   if (removed && cfg.proxyPrefix === removed.url) {
-    await chrome.storage.sync.set({ proxyPrefix: 'https://gh-proxy.org/', userSelected: false });
+    const fallback = next[0]?.url || DEFAULTS.proxyPrefix;
+    await chrome.storage.sync.set({ proxyPrefix: fallback, userSelected: false });
   }
   render(next);
-}
-
-/** 本地生成 id（与 storage 解耦；setStoredProxies 会规整）。 */
-function nextLocalId(list) {
-  return 'p_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-}
-
-function deriveName(url) {
-  try { return new URL(url).host; } catch { return url; }
 }
 
 function hideError() { addErrorEl.hidden = true; addErrorEl.textContent = ''; }

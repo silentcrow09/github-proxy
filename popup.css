@@ -49,6 +49,9 @@ body {
   border-radius: var(--radius);
   margin-bottom: 14px;
 }
+.switch-row + .switch-row {
+  margin-top: -8px;
+}
 .switch-text { display: flex; flex-direction: column; gap: 2px; }
 .switch-text strong { font-size: 13px; }
 .switch-text small { font-size: 11px; color: var(--text-muted); }

@@ -1,8 +1,9 @@
 // popup.js
 // 镜像 radio 列表 + 测速。复用 config.js：统一存储的可编辑镜像 + 测速。
-import { DEFAULTS, getStoredProxies, testProxies } from './src/config.js';
+import { getConfig, getStoredProxies, testProxies } from './src/config.js';
 
 const enabledEl = document.getElementById('enabled');
+const enhancedEl = document.getElementById('enhanced');
 const listEl = document.getElementById('proxies');
 const retestEl = document.getElementById('retest');
 const settingsEl = document.getElementById('settings');
@@ -11,8 +12,9 @@ const statusEl = document.getElementById('status');
 const latencies = {};   // url -> ms | null
 
 (async () => {
-  const cfg = await chrome.storage.sync.get(DEFAULTS);
-  enabledEl.checked = cfg.enabled === true;
+  const cfg = await getConfig();
+  enabledEl.checked = cfg.enabled;
+  enhancedEl.checked = cfg.enhanced;
   await measureAndRender(cfg.proxyPrefix, !cfg.userSelected);
 })();
 
@@ -30,7 +32,6 @@ async function measureAndRender(selectedUrl, autoSelect) {
     await chrome.storage.sync.set({ proxyPrefix: next });   // 落地默认最优(不设 userSelected)
   }
 }
-
 /** 延迟最低的活镜像；全挂回退第一个。 */
 function pickBest(tested) {
   const alive = tested.filter((t) => t.ms != null);
@@ -47,7 +48,6 @@ function summary(tested) {
 function setStatus(text) { statusEl.textContent = text; }
 
 /** ms -> 显示文本与颜色档位 */
-function latencyMeta(ms) {
   if (ms == null) return { text: '超时', cls: 'ms timeout' };
   if (ms < 500) return { text: `${ms}ms`, cls: 'ms fast' };
   if (ms < 1500) return { text: `${ms}ms`, cls: 'ms ok' };
@@ -55,35 +55,52 @@ function latencyMeta(ms) {
 }
 
 function render(list, selectedUrl, testing) {
-  listEl.innerHTML = list.map((p) => {
+  listEl.innerHTML = '';
+  for (const p of list) {
     const ms = latencies[p.url];
     let meta;
     if (testing && ms === undefined) meta = { text: '测速中', cls: 'ms testing' };
     else meta = latencyMeta(ms);
-    const active = p.url === selectedUrl ? 'active' : '';
-    const checked = p.url === selectedUrl ? 'checked' : '';
-    return `<label class="proxy ${active}">
-      <input type="radio" name="proxy" value="${p.url}" ${checked}>
-      <span class="proxy-name">
-        <span class="name">${esc(p.name)}</span>
-        <span class="url">${esc(p.url)}</span>
-      </span>
-      <span class="${meta.cls}">${meta.text}</span>
-    </label>`;
-  }).join('');
-  for (const r of listEl.querySelectorAll('input[name="proxy"]')) {
-    r.addEventListener('change', () => select(r.value));
-  }
-}
 
-function esc(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const label = document.createElement('label');
+    label.className = 'proxy' + (p.url === selectedUrl ? ' active' : '');
+
+    const radio = document.createElement('input');
+    radio.type = 'radio';
+    radio.name = 'proxy';
+    radio.value = p.url;
+    if (p.url === selectedUrl) radio.checked = true;
+    radio.addEventListener('change', () => select(radio.value));
+    label.appendChild(radio);
+
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'proxy-name';
+
+    const nameEl = document.createElement('span');
+    nameEl.className = 'name';
+    nameEl.textContent = p.name;
+    nameSpan.appendChild(nameEl);
+
+    const urlEl = document.createElement('span');
+    urlEl.className = 'url';
+    urlEl.textContent = p.url;
+    nameSpan.appendChild(urlEl);
+
+    label.appendChild(nameSpan);
+
+    const msEl = document.createElement('span');
+    msEl.className = meta.cls;
+    msEl.textContent = meta.text;
+    label.appendChild(msEl);
+
+    listEl.appendChild(label);
+  }
 }
 
 async function select(url) {
   await chrome.storage.sync.set({ proxyPrefix: url, userSelected: true });   // 粘住
   // 即时高亮当前项
-  const cfg = await chrome.storage.sync.get(DEFAULTS);
+  const cfg = await getConfig();
   const list = await getStoredProxies();
   render(list, cfg.proxyPrefix, false);
 }
@@ -91,9 +108,12 @@ async function select(url) {
 enabledEl.addEventListener('change', () =>
   chrome.storage.sync.set({ enabled: enabledEl.checked })
 );
+enhancedEl.addEventListener('change', () =>
+  chrome.storage.sync.set({ enhanced: enhancedEl.checked })
+);
 retestEl.addEventListener('click', async () => {
   retestEl.disabled = true;
-  const cfg = await chrome.storage.sync.get(DEFAULTS);
+  const cfg = await getConfig();
   await measureAndRender(cfg.proxyPrefix, !cfg.userSelected);
   retestEl.disabled = false;
 });

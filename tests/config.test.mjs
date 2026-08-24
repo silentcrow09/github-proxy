@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULTS, normalizePrefix, PROXIES, normalizeProxyUrl, isValidProxyUrl, seedProxies, normalizeList, getStoredProxies, PROXIES_KEY } from '../src/config.js';
+import { DEFAULTS, normalizePrefix, PROXIES, normalizeProxyUrl, isValidProxyUrl, seedProxies, normalizeList, getStoredProxies, setStoredProxies, resetProxies, getConfig, PROXIES_KEY } from '../src/config.js';
 
 // ---- chrome.storage.sync mock（仅 getStoredProxies 用到）----
 function mockStorage() {
@@ -9,9 +9,10 @@ function mockStorage() {
     storage: {
       sync: {
         get: async (key) => {
+          // 与 chrome.storage.sync.get 语义一致：对象参数时，未存储的 key 返回默认值
           if (typeof key === 'string') return key in store ? { [key]: store[key] } : {};
           const out = {};
-          for (const k of Object.keys(key)) if (k in store) out[k] = store[k];
+          for (const k of Object.keys(key)) out[k] = k in store ? store[k] : key[k];
           return out;
         },
         set: async (obj) => { Object.assign(store, obj); },
@@ -43,7 +44,7 @@ test('normalizePrefix: 去除首尾空白', () => {
 });
 
 test('DEFAULTS 默认值正确', () => {
-  assert.deepEqual(DEFAULTS, { enabled: true, proxyPrefix: 'https://gh-proxy.org/' });
+  assert.deepEqual(DEFAULTS, { enabled: true, enhanced: false, proxyPrefix: 'https://gh-proxy.org/' });
 });
 
 test('normalizePrefix: 非 http(s) 前缀回退默认值', () => {
@@ -143,4 +144,70 @@ test('getStoredProxies: 已有数据时规整后原样返回，不重新 seed', 
   const list = await getStoredProxies();
   assert.equal(list.length, 1, '已有合法数据不应被覆盖');
   assert.equal(list[0].url, 'https://mine.com/');
+});
+
+test('setStoredProxies: 写入后读取应一致（已规整）', async () => {
+  mockStorage();
+  const input = [
+    { id: 'a', name: '镜像A', url: 'https://a.com' },
+    { id: 'b', name: '镜像B', url: 'https://b.com/' },
+  ];
+  await setStoredProxies(input);
+  const list = await getStoredProxies();
+  assert.equal(list.length, 2);
+  assert.equal(list[0].url, 'https://a.com/', '应补尾斜杠');
+  assert.equal(list[1].url, 'https://b.com/');
+});
+
+test('setStoredProxies: 去重 + 丢弃非法项', async () => {
+  mockStorage();
+  await setStoredProxies([
+    { id: 'a', name: 'A', url: 'https://a.com/' },
+    { id: 'b', name: 'dup', url: 'https://a.com/' },   // 重复
+    { id: 'c', name: 'bad', url: 'ftp://x.com/' },      // 非法
+  ]);
+  const list = await getStoredProxies();
+  assert.equal(list.length, 1);
+  assert.equal(list[0].url, 'https://a.com/');
+});
+
+test('resetProxies: 恢复内置默认镜像', async () => {
+  mockStorage();
+  // 先写入自定义数据
+  await setStoredProxies([{ id: 'x', name: '自定义', url: 'https://custom.com/' }]);
+  // 再恢复默认
+  const list = await resetProxies();
+  assert.equal(list.length, PROXIES.length, '应恢复为内置镜像数量');
+  for (let i = 0; i < PROXIES.length; i++) {
+    assert.equal(list[i].url, PROXIES[i].url);
+  }
+  // 确认 storage 也已更新
+  const stored = await getStoredProxies();
+  assert.equal(stored.length, PROXIES.length);
+});
+
+test('getConfig: 默认值正确', async () => {
+  mockStorage();   // 空存储
+  const cfg = await getConfig();
+  assert.equal(cfg.enabled, true);
+  assert.equal(cfg.enhanced, false);
+  assert.equal(cfg.proxyPrefix, DEFAULTS.proxyPrefix);
+});
+
+test('getConfig: 归一化 proxyPrefix', async () => {
+  const store = mockStorage();
+  store.proxyPrefix = 'https://ghproxy.net';   // 缺尾斜杠
+  store.enabled = false;
+  store.enhanced = true;
+  const cfg = await getConfig();
+  assert.equal(cfg.enabled, false);
+  assert.equal(cfg.enhanced, true);
+  assert.equal(cfg.proxyPrefix, 'https://ghproxy.net/', '应补尾斜杠');
+});
+
+test('getConfig: 非法 proxyPrefix 回退默认', async () => {
+  const store = mockStorage();
+  store.proxyPrefix = 'not-a-url';
+  const cfg = await getConfig();
+  assert.equal(cfg.proxyPrefix, DEFAULTS.proxyPrefix);
 });
