@@ -5,7 +5,7 @@
   "description": "在 github.com 上自动把 Release 下载地址与 clone 地址改写为加速地址。",
   "permissions": ["storage"],
   "host_permissions": ["https://github.com/*"],
-  "action": { "default_popup": "popup.html", "default_icon": "icons/icon128.png" },
+  "action": { "default_popup": "popup/popup.html", "default_icon": "icons/icon128.png" },
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
@@ -19,7 +19,7 @@
       "run_at": "document_idle"
     }
   ],
-  "options_ui": { "page": "options.html", "open_in_tab": true },
+  "options_ui": { "page": "options/options.html", "open_in_tab": true },
   "web_accessible_resources": [
     {
       "resources": ["src/rewrite.js", "src/config.js"],

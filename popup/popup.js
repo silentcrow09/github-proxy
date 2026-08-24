@@ -1,6 +1,6 @@
 // popup.js
 // 镜像 radio 列表 + 测速。复用 config.js：统一存储的可编辑镜像 + 测速。
-import { getConfig, getStoredProxies, testProxies } from './src/config.js';
+import { getConfig, getStoredProxies, testProxies } from '../src/config.js';
 
 const enabledEl = document.getElementById('enabled');
 const enhancedEl = document.getElementById('enhanced');

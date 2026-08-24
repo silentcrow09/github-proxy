@@ -5,3 +5,4 @@ node_modules/
 .superpowers/
 .codefree/
 codefree-code-review/
+.codegraph/
