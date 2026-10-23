@@ -11,6 +11,8 @@ codefree-code-review/
 
 # 抖音宣传视频素材：仅本地保留，不推送到 GitHub
 docs/douyin-video/
+*.mp4
 
 # 一次性截图 / 渲染脚本：仅本地保留
 *-tmp.*
+tools/build-video.ps1
