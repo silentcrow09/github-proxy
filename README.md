@@ -10,7 +10,7 @@ Chrome MV3 扩展：访问 `github.com` 时，自动把 **Release 资源下载�
 - **实时切换**：改镜像后，已打开的 GitHub 标签无需刷新即生效
 - **严格范围**：默认只改 Release 资源 + `.git` clone，不碰页面导航链接
 - **增强模式**：开启后改写页面中所有 GitHub 仓库链接（自动跳过页头/页脚/面包屑等导航区）
-- **可见状态**：被改写的链接带绿色小圆点；popup 顶部常驻「当前生效镜像 + 延迟」状态条；工具栏徽标用单字符表示——绿点＝已启用且镜像正常、红叹号＝镜像连续失败、无徽标＝已停用（详情在图标 tooltip 上）
+- **可见状态**：被改写的链接带绿色小圆点；popup 顶部常驻「当前生效镜像 + 延迟」状态条；**工具栏图标按状态换色**——绿=运行中、红=镜像连续失败、灰=已停用（镜像名与延迟在图标 tooltip 上）
 - **故障切换**：后台每 5 分钟体检当前镜像，连续失败 2 次自动切到次优镜像
 - **幂等**：重复触发不会 `gh-proxy.org/gh-proxy.org/...`，切换镜像时自动还原旧链接再改写
 
@@ -100,11 +100,33 @@ manifest.json          MV3 配置（content script + background SW + options_ui�
 src/rewrite.js         纯函数 rewrite(url, prefix, opts) → 加速 URL | null（支持增强模式）
 src/config.js          默认值 / 存储分区 / 镜像清单 / 真实代理探测 / 择优
 src/content.js         DOM 扫描 + MutationObserver，动态 import 上面两个 ESM
-src/background.js      Service Worker：工具栏徽标、周期体检、故障切换
+src/background.js      Service Worker：工具栏图标变色、周期体检、故障切换
 popup/                 状态条 + 镜像 radio 列表 + 测速 UI
 options/               镜像管理页（增 / 改 / 删 + 使用中徽标 + 逐镜像验证）
+icons/                 基础图标 + 三种状态色图标（state-on / state-off / state-fail）
+tools/uicheck.mjs      无头 Chrome UI 验收（截图 + 报错/高度闸门）
+tools/make-icons.ps1   由基础图标重新生成三色状态图标
 tests/                 node:test 单测（rewrite + config + 语法守卫）
 ```
+
+## 工具栏图标
+
+图标底色随运行状态变化，一眼可辨：
+
+| 颜色 | 状态 |
+|---|---|
+| 绿色 | 已启用，当前镜像正常 |
+| 红色 | 已启用，但当前镜像连续失败 |
+| 灰色 | 已停用 |
+
+镜像名与延迟放在图标 tooltip 上。状态图标由 `tools/make-icons.ps1` 从 `icons/icon*.png` 换色生成：
+
+```bash
+powershell -ExecutionPolicy Bypass -File tools/make-icons.ps1
+```
+
+> 换色改的是**已有的 PNG**而不是重新渲染 `icons/icon.svg`——那份 SVG 用的
+> Playfair Display 字体未必装了，重新渲染会让 "G" 的字形变样。
 
 ## 开发
 

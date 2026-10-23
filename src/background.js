@@ -1,7 +1,7 @@
 // src/background.js
-// Service Worker：维护工具栏徽标、定期体检当前生效镜像、连续失败时自动切换到次优镜像。
+// Service Worker：维护工具栏图标颜色、定期体检当前生效镜像、连续失败时自动切换到次优镜像。
 //
-// 不申请 notifications 权限——徽标变红 + popup 里的告警条已经足够让用户察觉，
+// 不申请 notifications 权限——图标变色 + popup 里的告警条已经足够让用户察觉，
 // 避免为了提示而多要一个权限。
 
 import {
@@ -15,19 +15,36 @@ const CHECK_INTERVAL_MIN = 5;
 const FAIL_THRESHOLD = 2;        // 连续失败几次才切换镜像
 const HEALTH_WINDOW_MS = 30 * 60 * 1000;
 
+/** 三种状态对应的图标（由 tools/make-icons.ps1 从基础图标换色生成）。 */
+const ICON_PATHS = {
+  on: {
+    16: 'icons/state-on-16.png', 32: 'icons/state-on-32.png',
+    48: 'icons/state-on-48.png', 128: 'icons/state-on-128.png',
+  },
+  off: {
+    16: 'icons/state-off-16.png', 32: 'icons/state-off-32.png',
+    48: 'icons/state-off-48.png', 128: 'icons/state-off-128.png',
+  },
+  fail: {
+    16: 'icons/state-fail-16.png', 32: 'icons/state-fail-32.png',
+    48: 'icons/state-fail-48.png', 128: 'icons/state-fail-128.png',
+  },
+};
+
 /**
- * 更新工具栏徽标：开关状态用文字，镜像健康度用颜色，详情放 tooltip。
+ * 按运行状态给工具栏图标换色。
  *
- * 徽标用单字符而不是 "ON" 这类双字母：Chrome 的徽标宽度跟着文字走，
- * 双字母会撑成一个大药丸，在工具栏上很扎眼。单字符是一个小圆点，安静得多。
- *   •  绿色 = 已启用且当前镜像正常
- *   !  红色 = 已启用但当前镜像连续失败
- *   无徽标 = 已停用
+ * 用图标颜色而不是徽标：徽标是叠在图标右上角的小药丸，双字母会被撑得很宽、
+ * 在工具栏上很扎眼；直接换整枚图标的底色更干净，状态一眼可辨。
+ *   绿色 = 已启用且当前镜像正常
+ *   红色 = 已启用但当前镜像连续失败
+ *   灰色 = 已停用
+ * 详情（镜像名 + 延迟）放 tooltip，不占图标空间。
  */
-async function updateBadge() {
+async function updateIcon() {
   const cfg = await getConfig();
   if (!cfg.enabled) {
-    await chrome.action.setBadgeText({ text: '' });
+    await chrome.action.setIcon({ path: ICON_PATHS.off });
     await chrome.action.setTitle({ title: 'GitHub 加速：已停用' });
     return;
   }
@@ -41,10 +58,7 @@ async function updateBadge() {
   const rec = health[active];
   const failing = rec && (rec.fails || 0) > 0;
 
-  await chrome.action.setBadgeText({ text: failing ? '!' : '•' });
-  await chrome.action.setBadgeBackgroundColor({
-    color: failing ? '#cf222e' : '#1a7f37',
-  });
+  await chrome.action.setIcon({ path: failing ? ICON_PATHS.fail : ICON_PATHS.on });
 
   let detail = '可用';
   if (failing) detail = `连续失败 ${rec.fails} 次`;
@@ -57,7 +71,7 @@ async function updateBadge() {
  */
 async function healthCheck() {
   const cfg = await getConfig();
-  if (!cfg.enabled) { await updateBadge(); return; }
+  if (!cfg.enabled) { await updateIcon(); return; }
 
   const list = await getStoredProxies();
   if (!list.length) return;
@@ -101,7 +115,7 @@ async function healthCheck() {
   }
 
   await setHealth(health);
-  await updateBadge();
+  await updateIcon();
 }
 
 /** 清理过期的健康记录，避免 local 区无限增长。 */
@@ -124,12 +138,14 @@ chrome.runtime.onInstalled.addListener(async () => {
   await migrateProxiesToLocal();
   await getStoredProxies();       // 首次安装写入种子
   await chrome.alarms.create(ALARM_NAME, { periodInMinutes: CHECK_INTERVAL_MIN });
-  await updateBadge();
+  // 早期版本用过徽标，升级上来时清掉残留
+  await chrome.action.setBadgeText({ text: '' });
+  await updateIcon();
 });
 
 chrome.runtime.onStartup.addListener(async () => {
   await migrateProxiesToLocal();
-  await updateBadge();
+  await updateIcon();
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
@@ -139,9 +155,9 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     .catch((err) => console.error('[github-proxy] health check failed', err));
 });
 
-// 配置变化 → 立刻刷新徽标
+// 配置变化 → 立刻刷新图标颜色
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'sync' && (changes.enabled || changes.proxyPrefix)) {
-    updateBadge().catch(() => {});
+    updateIcon().catch(() => {});
   }
 });

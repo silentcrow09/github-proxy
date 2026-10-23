@@ -71,6 +71,16 @@ test('manifest.json 是合法 JSON 且必需字段齐全', async () => {
   assert.equal(m.background.type, 'module', 'background 需声明为 module 才能用 import');
 });
 
+test('状态图标齐全（运行/停用/失败 × 16/32/48/128）', async () => {
+  const { existsSync } = await import('node:fs');
+  for (const key of ['on', 'off', 'fail']) {
+    for (const size of [16, 32, 48, 128]) {
+      const f = join(ROOT, 'icons', `state-${key}-${size}.png`);
+      assert.ok(existsSync(f), `缺少状态图标 ${f}（用 tools/make-icons.ps1 生成）`);
+    }
+  }
+});
+
 test('manifest.json: 内置镜像域名都在 host_permissions 里', async () => {
   // 少了主机权限，探测这些镜像就会触发 "blocked by CORS policy"，后台控制台一片红字
   const { readFileSync } = await import('node:fs');
