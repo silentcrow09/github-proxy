@@ -1,14 +1,13 @@
 # tools/make-icons.ps1
-# 由现有蓝色图标生成三种状态色的图标（运行/停用/失败）。
+# 由 icons/icon.svg 渲染全部图标：基础图标 + 三种状态色图标。
 #
 #   powershell -ExecutionPolicy Bypass -File tools/make-icons.ps1
 #
-# 为什么不重新渲染 icons/icon.svg：那份 SVG 用的 Playfair Display 字体本机没装，
-# ImageMagick 会回退成无衬线体，"G" 的字形会变样。所以这里改的是**已有的 PNG**，
-# 只换底色，字形原样保留。
+# 设计说明：整枚图形全部由路径绘制，不含 <text>，所以渲染不依赖任何字体，
+# 在任何机器上结果一致（旧版图标用 Playfair Display 衬线体，缺字体就会变形）。
 #
-# 换色用 -fuzz + -opaque：把底色蓝整体替换成目标色。
-# -fuzz 30% 会一并吃掉 "G" 边缘的蓝白混合像素，使描边平滑过渡到新底色。
+# 改设计只改 icons/icon.svg 这一处，然后重跑本脚本即可。
+# 想换底色：把 SVG 里的 #0969da 替换成目标色。
 param(
   [string]$ImageMagick = 'magick'
 )
@@ -16,6 +15,11 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $icons = Join-Path $root 'icons'
+$svgPath = Join-Path $icons 'icon.svg'
+$tmp = Join-Path $env:TEMP ('ghp-icons-' + [guid]::NewGuid().ToString('N'))
+
+if (-not (Test-Path $svgPath)) { throw "缺少源文件：$svgPath" }
+New-Item -ItemType Directory -Force -Path $tmp | Out-Null
 
 # 状态 -> 底色
 $states = @(
@@ -24,18 +28,33 @@ $states = @(
   @{ key = 'fail'; color = '#cf222e'; desc = '镜像连续失败（红色）' }
 )
 $sizes = @(16, 32, 48, 128)
-$fuzz = '30%'
+$base = '#0969da'
 
+$svg = Get-Content $svgPath -Raw
+
+function Render-Svg([string]$svgFile, [string]$outFile, [int]$size) {
+  & $ImageMagick -background none $svgFile -resize "${size}x${size}" -depth 8 "PNG32:$outFile"
+  if ($LASTEXITCODE -ne 0) { throw "渲染失败：$outFile" }
+}
+
+# ---- 基础图标（manifest 的 default_icon / icons）----
+foreach ($size in $sizes) {
+  Render-Svg $svgPath (Join-Path $icons "icon$size.png") $size
+  Write-Host ("生成 {0,-14} 基础图标" -f "icon$size.png")
+}
+
+# ---- 状态图标（运行时按状态换色）----
 foreach ($s in $states) {
+  $colored = $svg -replace [regex]::Escape($base), $s.color
+  $svgFile = Join-Path $tmp "$($s.key).svg"
+  Set-Content -Path $svgFile -Value $colored -Encoding UTF8
   foreach ($size in $sizes) {
-    $src = Join-Path $icons "icon$size.png"
-    $dst = Join-Path $icons "state-$($s.key)-$size.png"
-    if (-not (Test-Path $src)) { throw "缺少源图标：$src" }
-    & $ImageMagick $src -fuzz $fuzz -fill $s.color -opaque '#0969da' $dst
-    if ($LASTEXITCODE -ne 0) { throw "生成失败：$dst" }
-    Write-Host ("生成 {0,-28} {1}" -f (Split-Path $dst -Leaf), $s.desc)
+    $out = Join-Path $icons "state-$($s.key)-$size.png"
+    Render-Svg $svgFile $out $size
+    Write-Host ("生成 {0,-22} {1}" -f (Split-Path $out -Leaf), $s.desc)
   }
 }
 
+Remove-Item -Recurse -Force $tmp
 Write-Host ''
-Write-Host '完成。共生成' ($states.Count * $sizes.Count) '个状态图标。'
+Write-Host "完成。基础图标 $($sizes.Count) 个 + 状态图标 $($states.Count * $sizes.Count) 个。"
