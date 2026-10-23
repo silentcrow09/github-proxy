@@ -126,7 +126,15 @@ const MOCK = `(() => {
     { id: 'p6', name: 'gh-proxy.com', url: 'https://gh-proxy.com/' },
     { id: 'p7', name: 'ghps.cc',      url: 'https://ghps.cc/' },
   ];
-  local.latency = {};
+  local.latency = {
+    'https://gh-proxy.org/':    { ms: 1545, state: 'ok', status: 200, at: Date.now() },
+    'https://v4.gh-proxy.org/': { ms: 3192, state: 'ok', status: 200, at: Date.now() },
+    'https://cdn.gh-proxy.org/':{ ms: 1885, state: 'ok', status: 200, at: Date.now() },
+    'https://ghproxy.net/':     { ms: 6939, state: 'unknown', status: null, at: Date.now() },
+    'https://ghfast.top/':      { ms: 1725, state: 'unknown', status: null, at: Date.now() },
+    'https://gh-proxy.com/':    { ms: 1248, state: 'ok', status: 200, at: Date.now() },
+    'https://ghps.cc/':         { ms: 1512, state: 'unknown', status: null, at: Date.now() },
+  };
   local.health = {};
 })();`.replace('${PORT}', String(PORT));
 
@@ -234,9 +242,11 @@ async function shoot(path, file, size, waitMs) {
   await fetch(`http://127.0.0.1:${DBG}/json/close/${page.id}`);
 }
 
-// popup 会真的向各镜像发探测请求，给足时间
-await shoot('popup/popup.html', join(OUT, 'popup.png'), { w: 340, h: 620 }, 22000);
-await shoot('options/options.html', join(OUT, 'options.png'), { w: 860, h: 900 }, 12000);
+// popup 会真的向各镜像发探测请求，给足时间。
+// 注意：模拟页是 http://127.0.0.1 源，拿不到真实扩展的主机权限，
+// 所以 CORS 依然生效——这里预置了测速缓存，走的是"读缓存直接渲染"这条常见路径。
+await shoot('popup/popup.html', join(OUT, 'popup.png'), { w: 340, h: 620 }, 8000);
+await shoot('options/options.html', join(OUT, 'options.png'), { w: 860, h: 900 }, 8000);
 
 chrome.kill();
 server.close();

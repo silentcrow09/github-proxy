@@ -6,12 +6,14 @@ import {
   setEnabled, setEnhanced, setProxyPrefix, resolveActivePrefix,
   migrateProxiesToLocal, getLatencyCache, setLatencyCache, getHealth, setHealth,
   probeMirror, testProxies, pickBest, PROBE_TARGET, PROXIES_KEY,
+  canReadResponse, BUILTIN_ORIGINS,
 } from '../src/config.js';
 
 // ---- chrome.storage mock：区分 sync / local 两个区 ----
-function mockStorage() {
+function mockStorage(grantedOrigins = []) {
   const sync = {};
   const local = {};
+  const granted = new Set(grantedOrigins);
   const area = (store) => ({
     get: async (key) => {
       // 与 chrome.storage 语义一致：对象参数时，未存储的 key 返回默认值
@@ -23,8 +25,15 @@ function mockStorage() {
     set: async (obj) => { Object.assign(store, obj); },
     remove: async (key) => { delete store[key]; },
   });
-  globalThis.chrome = { storage: { sync: area(sync), local: area(local) } };
-  return { sync, local };
+  globalThis.chrome = {
+    storage: { sync: area(sync), local: area(local) },
+    permissions: {
+      contains: async ({ origins }) => !!origins && granted.has(origins[0]),
+      request: async () => false,
+      getAll: async () => ({ origins: [...granted] }),
+    },
+  };
+  return { sync, local, granted };
 }
 
 // ---- fetch mock ----
@@ -320,10 +329,10 @@ test('PROBE_TARGET: 指向一个真实的 github.com 资源', () => {
   assert.ok(PROBE_TARGET.length > 0);
 });
 
-test('probeMirror: CORS 可读且 200 → ok', async () => {
+test('probeMirror: 有主机权限时读到 200 → ok', async () => {
   mockStorage();
   mockFetch(async () => resp(200, 258));
-  const r = await probeMirror('https://m.com/');
+  const r = await probeMirror('https://gh-proxy.org/');
   assert.equal(r.state, 'ok');
   assert.equal(r.status, 200);
   assert.equal(r.bytes, 258);
@@ -334,14 +343,14 @@ test('probeMirror: 探测请求必须打在真实代理路径上（不是镜像�
   mockStorage();
   let hit = null;
   mockFetch(async (url) => { hit = url; return resp(200, 258); });
-  await probeMirror('https://m.com/');
-  assert.equal(hit, 'https://m.com/' + PROBE_TARGET, '应请求 prefix + 真实资源');
+  await probeMirror('https://gh-proxy.org/');
+  assert.equal(hit, 'https://gh-proxy.org/' + PROBE_TARGET, '应请求 prefix + 真实资源');
 });
 
-test('probeMirror: 返回非 200 → bad（镜像代理不出东西）', async () => {
+test('probeMirror: 有权限时返回非 200 → bad（镜像代理不出东西）', async () => {
   mockStorage();
   mockFetch(async () => resp(404, 13));
-  const r = await probeMirror('https://m.com/');
+  const r = await probeMirror('https://ghps.cc/');
   assert.equal(r.state, 'bad');
   assert.equal(r.status, 404);
 });
@@ -349,28 +358,41 @@ test('probeMirror: 返回非 200 → bad（镜像代理不出东西）', async (
 test('probeMirror: 200 但响应体为空 → bad', async () => {
   mockStorage();
   mockFetch(async () => resp(200, 0));
-  const r = await probeMirror('https://m.com/');
+  const r = await probeMirror('https://gh-proxy.org/');
   assert.equal(r.state, 'bad');
 });
 
-test('probeMirror: CORS 被拒但 no-cors 通 → unknown（可达但无法校验内容）', async () => {
-  mockStorage();
-  mockFetch(async (url, opts) => {
-    if (opts.mode === 'cors') throw new TypeError('Failed to fetch');
-    return resp(200, 258);
-  });
-  const r = await probeMirror('https://m.com/');
-  assert.equal(r.state, 'unknown');
-  assert.equal(r.status, null);
-  assert.ok(typeof r.ms === 'number');
+test('probeMirror: 无主机权限的自定义镜像只发 no-cors，不触发 CORS 报错', async () => {
+  mockStorage();                       // 未授予任何 origin 权限
+  const modes = [];
+  mockFetch(async (url, opts) => { modes.push(opts.mode); return resp(200, 258); });
+  const r = await probeMirror('https://my-own-mirror.example/');
+  assert.equal(r.state, 'unknown', '无权限时只能确认可达，无法校验内容');
+  assert.deepEqual(modes, ['no-cors'], '绝不能对无权限域名发 CORS 请求——浏览器会在控制台刷报错');
 });
 
-test('probeMirror: 两种模式都失败 → dead（不可达）', async () => {
+test('probeMirror: 自定义镜像被授予主机权限后 → 可校验内容', async () => {
+  mockStorage(['https://my-own-mirror.example/*']);
+  const modes = [];
+  mockFetch(async (url, opts) => { modes.push(opts.mode); return resp(200, 258); });
+  const r = await probeMirror('https://my-own-mirror.example/');
+  assert.equal(r.state, 'ok');
+  assert.deepEqual(modes, ['cors']);
+});
+
+test('probeMirror: 不可达 → dead（无可用响应）', async () => {
   mockStorage();
   mockFetch(async () => { throw new TypeError('Failed to fetch'); });
-  const r = await probeMirror('https://m.com/');
+  const r = await probeMirror('https://my-own-mirror.example/');
   assert.equal(r.state, 'dead');
   assert.equal(r.ms, null);
+});
+
+test('canReadResponse: 内置镜像恒为可读；自定义镜像按授权判定', async () => {
+  mockStorage(['https://granted.example/*']);
+  assert.equal(await canReadResponse('https://ghfast.top/'), true, '内置镜像在 manifest 里已声明');
+  assert.equal(await canReadResponse('https://granted.example/'), true);
+  assert.equal(await canReadResponse('https://not-granted.example/'), false);
 });
 
 // ---- 择优 ----
@@ -402,7 +424,7 @@ test('pickBest: 全挂时回退到清单首项', () => {
 test('testProxies: 逐个探测并带回 state', async () => {
   mockStorage();
   mockFetch(async () => resp(200, 258));
-  const tested = await testProxies([{ name: 'A', url: 'https://a.com/' }]);
+  const tested = await testProxies([{ name: 'A', url: 'https://gh-proxy.org/' }]);
   assert.equal(tested.length, 1);
   assert.equal(tested[0].state, 'ok');
   assert.equal(tested[0].name, 'A');

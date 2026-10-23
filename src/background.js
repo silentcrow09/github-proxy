@@ -15,7 +15,15 @@ const CHECK_INTERVAL_MIN = 5;
 const FAIL_THRESHOLD = 2;        // 连续失败几次才切换镜像
 const HEALTH_WINDOW_MS = 30 * 60 * 1000;
 
-/** 更新工具栏徽标：开关状态用文字，镜像健康度用颜色，详情放 tooltip。 */
+/**
+ * 更新工具栏徽标：开关状态用文字，镜像健康度用颜色，详情放 tooltip。
+ *
+ * 徽标用单字符而不是 "ON" 这类双字母：Chrome 的徽标宽度跟着文字走，
+ * 双字母会撑成一个大药丸，在工具栏上很扎眼。单字符是一个小圆点，安静得多。
+ *   •  绿色 = 已启用且当前镜像正常
+ *   !  红色 = 已启用但当前镜像连续失败
+ *   无徽标 = 已停用
+ */
 async function updateBadge() {
   const cfg = await getConfig();
   if (!cfg.enabled) {
@@ -33,7 +41,7 @@ async function updateBadge() {
   const rec = health[active];
   const failing = rec && (rec.fails || 0) > 0;
 
-  await chrome.action.setBadgeText({ text: 'ON' });
+  await chrome.action.setBadgeText({ text: failing ? '!' : '•' });
   await chrome.action.setBadgeBackgroundColor({
     color: failing ? '#cf222e' : '#1a7f37',
   });

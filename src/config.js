@@ -242,6 +242,37 @@ function abortSignal(timeoutMs) {
 }
 
 /**
+ * 内置镜像的 origin 列表。
+ * 与 manifest.json 的 host_permissions 一一对应（tests/parse.test.mjs 有断言防止漂移）：
+ * 持有主机权限的域名，扩展的请求被浏览器放行、不走 CORS 检查，
+ * 因此既能读到真实状态码，也不会在控制台留下 "blocked by CORS policy" 的报错。
+ */
+export const BUILTIN_ORIGINS = [
+  'https://gh-proxy.org',
+  'https://v4.gh-proxy.org',
+  'https://cdn.gh-proxy.org',
+  'https://ghproxy.net',
+  'https://ghfast.top',
+  'https://gh-proxy.com',
+  'https://ghps.cc',
+];
+
+/**
+ * 该镜像域名能否读到响应体与状态码。
+ * 内置镜像由 manifest 授予；自定义镜像需用户在设置页点「验证」授权。
+ */
+export async function canReadResponse(prefix) {
+  let origin;
+  try { origin = new URL(prefix).origin; } catch { return false; }
+  if (BUILTIN_ORIGINS.includes(origin)) return true;
+  try {
+    return await chrome.permissions.contains({ origins: [origin + '/*'] });
+  } catch {
+    return false;
+  }
+}
+
+/**
  * 真实代理探测：经镜像拉取一个真实 GitHub 资源，校验状态码与内容。
  *
  * 返回 state：
@@ -250,43 +281,49 @@ function abortSignal(timeoutMs) {
  *   bad     —— 已验证失效（镜像回了非 200，例如 404，文件根本代理不出来）
  *   dead    —— 不可达（连接失败或超时）
  *
- * 两种模式并发发起，而不是串行：CORS 模式能读到状态码就能给出确定结论；
- * 没有 CORS 头时浏览器不给读响应体，no-cors 那一路仍能确认"可达"。
- * 并发后单镜像耗时与一次请求相当，串行则要翻倍——慢镜像会被误判成超时。
- *
- * 超时默认 15s：并发探测 7 个镜像时会有排队，阈值太紧会把可用镜像误判成"超时"。
- * 探测 258 字节的资源还要 15s 以上，这个镜像对用户本来就没价值。
+ * 只有拿到主机权限的域名才走 CORS 模式：
+ *   - 有权限：扩展的请求被浏览器放行（不走 CORS 检查），能读到真实状态码，也不会在
+ *     控制台留下 "blocked by CORS policy" 的红字；
+ *   - 无权限：只能用 no-cors，浏览器不给读状态码（结论只能是"可达"）。
+ *     **不要对无权限的域名尝试 CORS** —— 浏览器会在控制台刷报错，JS 侧虽然兜得住，
+ *     但用户看到后台报错会以为扩展坏了。
  */
 export async function probeMirror(prefix, timeoutMs = 15000) {
   const target = prefix + PROBE_TARGET;
   const t0 = performance.now();
 
-  const a = abortSignal(timeoutMs);
-  const b = abortSignal(timeoutMs);
-
-  const corsP = fetch(target, { mode: 'cors', cache: 'no-store', signal: a.ctrl.signal })
-    .then(async (res) => {
+  if (await canReadResponse(prefix)) {
+    const a = abortSignal(timeoutMs);
+    try {
+      const res = await fetch(target, { mode: 'cors', cache: 'no-store', signal: a.ctrl.signal });
       const ms = Math.round(performance.now() - t0);
       if (!res.ok) return { ms, state: 'bad', status: res.status, reason: 'HTTP ' + res.status };
       const buf = await res.arrayBuffer();
       if (!buf || buf.byteLength === 0) return { ms, state: 'bad', status: res.status, reason: '空响应' };
       return { ms, state: 'ok', status: res.status, bytes: buf.byteLength };
-    })
-    .catch(() => null);      // null = 无法判定（无 CORS 头，或网络失败）
-
-  const nocorsP = fetch(target, { mode: 'no-cors', cache: 'no-store', signal: b.ctrl.signal })
-    .then(() => true)
-    .catch(() => false);
-
-  const [cors, reachable] = await Promise.all([corsP, nocorsP]);
-  a.cancel();
-  b.cancel();
-
-  if (cors) return cors;                       // 拿到了确定结论
-  if (reachable) {
-    return { ms: Math.round(performance.now() - t0), state: 'unknown', status: null };
+    } catch {
+      // 权限判断与实际不符等意外情况：退回 no-cors 确认可达，不留下 CORS 报错
+      return await probeReachable(target, timeoutMs);
+    } finally {
+      a.cancel();
+    }
   }
-  return { ms: null, state: 'dead', status: null };
+
+  return await probeReachable(target, timeoutMs);
+}
+
+/** no-cors 探测：只能确认"可达"与耗时，读不到状态码。 */
+async function probeReachable(target, timeoutMs) {
+  const b = abortSignal(timeoutMs);
+  const t0 = performance.now();
+  try {
+    await fetch(target, { mode: 'no-cors', cache: 'no-store', signal: b.ctrl.signal });
+    return { ms: Math.round(performance.now() - t0), state: 'unknown', status: null };
+  } catch {
+    return { ms: null, state: 'dead', status: null };
+  } finally {
+    b.cancel();
+  }
 }
 
 /**

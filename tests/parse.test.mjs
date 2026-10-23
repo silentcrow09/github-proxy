@@ -70,3 +70,18 @@ test('manifest.json 是合法 JSON 且必需字段齐全', async () => {
   assert.ok(m.background?.service_worker, '必须有 background service worker');
   assert.equal(m.background.type, 'module', 'background 需声明为 module 才能用 import');
 });
+
+test('manifest.json: 内置镜像域名都在 host_permissions 里', async () => {
+  // 少了主机权限，探测这些镜像就会触发 "blocked by CORS policy"，后台控制台一片红字
+  const { readFileSync } = await import('node:fs');
+  const { BUILTIN_ORIGINS } = await import('../src/config.js');
+  const m = JSON.parse(readFileSync(join(ROOT, 'manifest.json'), 'utf8'));
+  assert.ok(Array.isArray(m.host_permissions));
+  for (const origin of BUILTIN_ORIGINS) {
+    assert.ok(
+      m.host_permissions.includes(origin + '/*'),
+      `${origin} 应在 host_permissions 中，否则探测会被 CORS 拦截`,
+    );
+  }
+  assert.ok(m.host_permissions.includes('https://github.com/*'), 'github.com 必须有主机权限');
+});

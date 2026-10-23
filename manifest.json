@@ -1,11 +1,20 @@
 {
   "manifest_version": 3,
   "name": "GitHub 加速链接",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "在 github.com 上自动把 Release 下载地址与 clone 地址改写为加速地址。",
   "permissions": ["storage", "alarms"],
   "optional_host_permissions": ["*://*/*"],
-  "host_permissions": ["https://github.com/*"],
+  "host_permissions": [
+    "https://github.com/*",
+    "https://gh-proxy.org/*",
+    "https://v4.gh-proxy.org/*",
+    "https://cdn.gh-proxy.org/*",
+    "https://ghproxy.net/*",
+    "https://ghfast.top/*",
+    "https://gh-proxy.com/*",
+    "https://ghps.cc/*"
+  ],
   "background": { "service_worker": "src/background.js", "type": "module" },
   "action": { "default_popup": "popup/popup.html", "default_icon": "icons/icon128.png" },
   "icons": {
