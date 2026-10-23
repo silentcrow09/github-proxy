@@ -8,3 +8,6 @@ codefree-code-review/
 .codegraph/
 .workbuddy/
 .uicheck/
+
+# 抖音宣传视频素材：仅本地保留，不推送到 GitHub
+docs/douyin-video/
