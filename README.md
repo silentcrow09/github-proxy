@@ -144,6 +144,7 @@ node --test tests/rewrite.test.mjs tests/config.test.mjs tests/parse.test.mjs
 - `rewrite(url, prefix, opts)` 把前缀当参数传入，选路逻辑与改写逻辑解耦。
 - `content.js` 用 `WeakMap` 保存被改写元素的原始 URL（同时记下写进去的值，用于识别「元素被外部改过」），切换镜像或关闭加速时自动还原。
 - `content.js` 的 MutationObserver 会忽略「自己写出来的」变更，避免每次改写都多扫一遍全页。
+- **图标路径必须用 `chrome.runtime.getURL()` 拼绝对地址**：`chrome.action.setIcon()` 的相对路径按**调用方所在目录**解析，Service Worker 在 `src/` 下，写 `icons/x.png` 会被解析成 `src/icons/x.png`，报 "Failed to fetch"。
 - **语法守卫**：`tests/parse.test.mjs` 会对每个 `.js` 跑一次 `node --check`。UI 层曾因丢失一行函数声明而整体无法解析，而当时的单测全部通过——纯函数测试挡不住文件级致命错误，语法解析可以。
 
 ## 权限

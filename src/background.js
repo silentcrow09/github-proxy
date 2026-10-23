@@ -7,29 +7,13 @@
 import {
   getConfig, getStoredProxies, probeMirror, testProxies, pickBest,
   setProxyPrefix, resolveActivePrefix, migrateProxiesToLocal,
-  getLatencyCache, setLatencyCache, getHealth, setHealth,
+  getLatencyCache, setLatencyCache, getHealth, setHealth, stateIconPaths,
 } from './config.js';
 
 const ALARM_NAME = 'ghp-health-check';
 const CHECK_INTERVAL_MIN = 5;
 const FAIL_THRESHOLD = 2;        // 连续失败几次才切换镜像
 const HEALTH_WINDOW_MS = 30 * 60 * 1000;
-
-/** 三种状态对应的图标（由 tools/make-icons.ps1 从基础图标换色生成）。 */
-const ICON_PATHS = {
-  on: {
-    16: 'icons/state-on-16.png', 32: 'icons/state-on-32.png',
-    48: 'icons/state-on-48.png', 128: 'icons/state-on-128.png',
-  },
-  off: {
-    16: 'icons/state-off-16.png', 32: 'icons/state-off-32.png',
-    48: 'icons/state-off-48.png', 128: 'icons/state-off-128.png',
-  },
-  fail: {
-    16: 'icons/state-fail-16.png', 32: 'icons/state-fail-32.png',
-    48: 'icons/state-fail-48.png', 128: 'icons/state-fail-128.png',
-  },
-};
 
 /**
  * 按运行状态给工具栏图标换色。
@@ -42,28 +26,34 @@ const ICON_PATHS = {
  * 详情（镜像名 + 延迟）放 tooltip，不占图标空间。
  */
 async function updateIcon() {
-  const cfg = await getConfig();
-  if (!cfg.enabled) {
-    await chrome.action.setIcon({ path: ICON_PATHS.off });
-    await chrome.action.setTitle({ title: 'GitHub 加速：已停用' });
-    return;
+  try {
+    const cfg = await getConfig();
+    const paths = stateIconPaths();
+    if (!cfg.enabled) {
+      await chrome.action.setIcon({ path: paths.off });
+      await chrome.action.setTitle({ title: 'GitHub 加速：已停用' });
+      return;
+    }
+
+    const list = await getStoredProxies();
+    const active = await resolveActivePrefix();
+    const entry = list.find((p) => p.url === active);
+    const name = entry ? entry.name : active;
+
+    const health = await getHealth();
+    const rec = health[active];
+    const failing = rec && (rec.fails || 0) > 0;
+
+    await chrome.action.setIcon({ path: failing ? paths.fail : paths.on });
+
+    let detail = '可用';
+    if (failing) detail = `连续失败 ${rec.fails} 次`;
+    else if (rec && rec.lastMs != null) detail = `${rec.lastMs}ms`;
+    await chrome.action.setTitle({ title: `GitHub 加速：${name} · ${detail}` });
+  } catch (err) {
+    // 换图标失败不该让整个 Service Worker 的调用链炸成未捕获的 Promise 拒绝
+    console.error('[github-proxy] 更新图标失败', err);
   }
-
-  const list = await getStoredProxies();
-  const active = await resolveActivePrefix();
-  const entry = list.find((p) => p.url === active);
-  const name = entry ? entry.name : active;
-
-  const health = await getHealth();
-  const rec = health[active];
-  const failing = rec && (rec.fails || 0) > 0;
-
-  await chrome.action.setIcon({ path: failing ? ICON_PATHS.fail : ICON_PATHS.on });
-
-  let detail = '可用';
-  if (failing) detail = `连续失败 ${rec.fails} 次`;
-  else if (rec && rec.lastMs != null) detail = `${rec.lastMs}ms`;
-  await chrome.action.setTitle({ title: `GitHub 加速：${name} · ${detail}` });
 }
 
 /**
@@ -133,19 +123,33 @@ async function pruneHealth() {
 }
 
 // ---- 生命周期 ----
+// 监听器里的 async 函数返回的 Promise 不会被 Chrome 接管，
+// 一旦抛错就是 "Uncaught (in promise)"，所以这里统一兜住。
 
-chrome.runtime.onInstalled.addListener(async () => {
-  await migrateProxiesToLocal();
-  await getStoredProxies();       // 首次安装写入种子
-  await chrome.alarms.create(ALARM_NAME, { periodInMinutes: CHECK_INTERVAL_MIN });
-  // 早期版本用过徽标，升级上来时清掉残留
-  await chrome.action.setBadgeText({ text: '' });
-  await updateIcon();
+chrome.runtime.onInstalled.addListener(() => {
+  (async () => {
+    try {
+      await migrateProxiesToLocal();
+      await getStoredProxies();       // 首次安装写入种子
+      await chrome.alarms.create(ALARM_NAME, { periodInMinutes: CHECK_INTERVAL_MIN });
+      // 早期版本用过徽标，升级上来时清掉残留
+      await chrome.action.setBadgeText({ text: '' });
+      await updateIcon();
+    } catch (err) {
+      console.error('[github-proxy] 初始化失败', err);
+    }
+  })();
 });
 
-chrome.runtime.onStartup.addListener(async () => {
-  await migrateProxiesToLocal();
-  await updateIcon();
+chrome.runtime.onStartup.addListener(() => {
+  (async () => {
+    try {
+      await migrateProxiesToLocal();
+      await updateIcon();
+    } catch (err) {
+      console.error('[github-proxy] 启动初始化失败', err);
+    }
+  })();
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {

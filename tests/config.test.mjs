@@ -6,7 +6,7 @@ import {
   setEnabled, setEnhanced, setProxyPrefix, resolveActivePrefix,
   migrateProxiesToLocal, getLatencyCache, setLatencyCache, getHealth, setHealth,
   probeMirror, testProxies, pickBest, PROBE_TARGET, PROXIES_KEY,
-  canReadResponse, BUILTIN_ORIGINS,
+  canReadResponse, BUILTIN_ORIGINS, stateIconPaths,
 } from '../src/config.js';
 
 // ---- chrome.storage mock：区分 sync / local 两个区 ----
@@ -27,6 +27,10 @@ function mockStorage(grantedOrigins = []) {
   });
   globalThis.chrome = {
     storage: { sync: area(sync), local: area(local) },
+    runtime: {
+      id: 'mockextensionidmockextensionidmock',
+      getURL: (p) => `chrome-extension://mockextensionidmockextensionidmock/${p}`,
+    },
     permissions: {
       contains: async ({ origins }) => !!origins && granted.has(origins[0]),
       request: async () => false,
@@ -396,6 +400,34 @@ test('canReadResponse: 内置镜像恒为可读；自定义镜像按授权判定
 });
 
 // ---- 择优 ----
+
+test('stateIconPaths: 必须是绝对 URL，且指向真实存在的文件', async () => {
+  // 回归点：setIcon 的相对路径按"调用方所在目录"解析。
+  // Service Worker 在 src/ 下，写 'icons/x.png' 会被解析成 src/icons/x.png → "Failed to fetch"。
+  // 所以这里必须用 chrome.runtime.getURL() 拼绝对地址。
+  mockStorage();
+  const { existsSync } = await import('node:fs');
+  const { join, dirname } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
+
+  const paths = stateIconPaths();
+  for (const state of ['on', 'off', 'fail']) {
+    for (const size of [16, 32, 48, 128]) {
+      const url = paths[state][size];
+      assert.ok(
+        url.startsWith('chrome-extension://'),
+        `图标路径必须是绝对 URL（实际 ${url}）`,
+      );
+      assert.ok(
+        url.includes('/icons/state-') && !url.includes('/src/icons/'),
+        `图标路径不应按调用方目录解析（实际 ${url}）`,
+      );
+      const file = join(ROOT, 'icons', `state-${state}-${size}.png`);
+      assert.ok(existsSync(file), `图标文件应存在：${file}`);
+    }
+  }
+});
 
 test('pickBest: 优先在已验证可用里选延迟最低的', () => {
   const tested = [

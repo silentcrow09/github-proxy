@@ -241,6 +241,33 @@ function abortSignal(timeoutMs) {
   return { ctrl, cancel: () => clearTimeout(timer) };
 }
 
+/** 状态图标的基础名（与 tools/make-icons.ps1 生成的文件名对应）。 */
+export const ICON_STATES = { on: 'state-on', off: 'state-off', fail: 'state-fail' };
+
+/** Chrome 会按各尺寸选取图标。 */
+export const ICON_SIZES = [16, 32, 48, 128];
+
+/**
+ * 三种状态对应的图标路径。
+ *
+ * 必须用 chrome.runtime.getURL() 拼成**绝对 URL**：
+ * chrome.action.setIcon() 的相对路径是按**调用方所在目录**解析的，
+ * 而 Service Worker 位于 src/background.js，于是 'icons/x.png' 会被解析成
+ * chrome-extension://<id>/src/icons/x.png —— 找不到文件，报 "Failed to fetch"。
+ * 绝对 URL 不受调用方位置影响。
+ */
+export function stateIconPaths() {
+  const out = {};
+  for (const [state, base] of Object.entries(ICON_STATES)) {
+    const map = {};
+    for (const size of ICON_SIZES) {
+      map[size] = chrome.runtime.getURL(`icons/${base}-${size}.png`);
+    }
+    out[state] = map;
+  }
+  return out;
+}
+
 /**
  * 内置镜像的 origin 列表。
  * 与 manifest.json 的 host_permissions 一一对应（tests/parse.test.mjs 有断言防止漂移）：
