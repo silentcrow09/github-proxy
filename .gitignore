@@ -1,8 +1,10 @@
-.claude/
+node_modules/
 .DS_Store
 *.log
-node_modules/
+.claude/
 .superpowers/
 .codefree/
 codefree-code-review/
 .codegraph/
+.workbuddy/
+.uicheck/

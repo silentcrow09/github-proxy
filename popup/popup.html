@@ -15,6 +15,13 @@
   </header>
 
   <main class="main">
+    <!-- 当前生效镜像状态条 -->
+    <div class="status-bar" id="statusBar" data-state="idle">
+      <span class="status-dot" aria-hidden="true"></span>
+      <span class="status-main" id="statusMain">正在探测镜像…</span>
+    </div>
+    <p class="status-warn" id="statusWarn" hidden></p>
+
     <label class="switch-row">
       <span class="switch-text">
         <strong>启用加速</strong>

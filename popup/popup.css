@@ -27,7 +27,7 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 14px;
+  padding: 10px 14px;
   background: var(--bg-subtle);
   border-bottom: 1px solid var(--border);
 }
@@ -36,18 +36,51 @@ body {
 .title h1 { font-size: 14px; font-weight: 600; }
 .subtitle { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 
+/* ---------- 当前生效状态条 ---------- */
+.status-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-subtle);
+  font-size: 12px;
+  color: var(--text);
+}
+.status-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--text-muted); flex-shrink: 0;
+}
+.status-main { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.status-bar[data-state="ok"] { border-color: rgba(26,127,55,.3); background: rgba(26,127,55,.06); }
+.status-bar[data-state="ok"] .status-dot { background: var(--success); }
+.status-bar[data-state="warn"] { border-color: rgba(154,103,0,.3); background: rgba(154,103,0,.06); }
+.status-bar[data-state="warn"] .status-dot { background: var(--warn); }
+.status-bar[data-state="error"] { border-color: rgba(207,34,46,.3); background: rgba(207,34,46,.06); }
+.status-bar[data-state="error"] .status-dot { background: var(--danger); }
+
+.status-warn {
+  font-size: 11px; line-height: 1.45;
+  color: var(--danger);
+  margin: 0 0 10px;
+  padding: 6px 10px;
+  border-left: 2px solid var(--danger);
+  background: rgba(207,34,46,.05);
+}
+
 /* ---------- Main ---------- */
-.main { padding: 12px 14px; }
+.main { padding: 10px 14px; }
 
 .switch-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
+  padding: 8px 12px;
   background: var(--bg-subtle);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 .switch-row + .switch-row {
   margin-top: -8px;
@@ -80,7 +113,12 @@ body {
 .section-hint { font-size: 11px; color: var(--text-muted); }
 
 /* ---------- Proxy list ---------- */
-.proxy-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
+/* Chrome 弹窗最高约 600px，超出会让底部按钮落到折叠线以下。
+   列表超出部分内部滚动；当前生效的镜像会自动滚进视野。 */
+.proxy-list {
+  display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px;
+  max-height: 250px; overflow-y: auto; overscroll-behavior: contain;
+}
 
 .proxy {
   display: flex; align-items: center; gap: 8px;
@@ -107,6 +145,20 @@ body {
 .ms.ok { color: var(--warn); }
 .ms.timeout { color: var(--danger); }
 .ms.testing { color: var(--text-muted); opacity: .7; }
+.ms.untested { color: var(--text-muted); opacity: .75; }
+
+/* ---------- 状态徽标 ---------- */
+.badge {
+  flex-shrink: 0;
+  font-size: 10px; line-height: 16px;
+  padding: 0 5px;
+  border-radius: 3px;
+  border: 1px solid var(--border-muted);
+  color: var(--text-muted);
+  background: var(--bg-subtle);
+  white-space: nowrap;
+}
+.badge-warn { color: var(--warn); border-color: rgba(154,103,0,.3); background: rgba(154,103,0,.08); }
 
 /* ---------- Buttons ---------- */
 .btn {
@@ -122,7 +174,7 @@ body {
 
 /* ---------- Footer ---------- */
 .footer {
-  padding: 10px 14px; border-top: 1px solid var(--border);
+  padding: 8px 14px; border-top: 1px solid var(--border);
   background: var(--bg-subtle);
 }
 .btn-link {

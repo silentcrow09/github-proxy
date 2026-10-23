@@ -5,13 +5,14 @@ Chrome MV3 扩展：访问 `github.com` 时，自动把 **Release 资源下载�
 ## 功能
 
 - **原地替换**：Release 下载链接、clone 输入框地址直接变成加速地址，复制即用
-- **内置 7 个镜像 + 测速**：popup 里 radio 列表，每项显示延迟 `ms`，默认勾选当前网络最快的那个
+- **真实代理测速**：探测请求真的经镜像拉一个 GitHub 资源，而不是测镜像首页——首页快不代表能代理下载
 - **镜像管理**：设置页可对**所有镜像（含内置项）**添加 / 修改 / 删除，一键「恢复默认镜像」
-- **实时切换**：在 popup 改镜像后，已打开的 GitHub 标签无需刷新即生效
-- **严格范围**：只改 Release 资源 + `.git` clone，不碰页面导航链接（不影响正常浏览）
-- **增强模式**：开启后扫描页面中所有 GitHub 仓库链接（`github.com/{owner}/{repo}`），全部改写为加速地址，覆盖范围更广
+- **实时切换**：改镜像后，已打开的 GitHub 标签无需刷新即生效
+- **严格范围**：默认只改 Release 资源 + `.git` clone，不碰页面导航链接
+- **增强模式**：开启后改写页面中所有 GitHub 仓库链接（自动跳过页头/页脚/面包屑等导航区）
+- **可见状态**：被改写的链接带绿色小圆点；popup 顶部常驻「当前生效镜像 + 延迟」状态条；工具栏图标带徽标
+- **故障切换**：后台每 5 分钟体检当前镜像，连续失败 2 次自动切到次优镜像
 - **幂等**：重复触发不会 `gh-proxy.org/gh-proxy.org/...`，切换镜像时自动还原旧链接再改写
-- **零额外权限**：测速用 `fetch(no-cors)` 计时，仅需 `storage` + `github.com` 主机权限
 
 ## 安装
 
@@ -19,7 +20,7 @@ Chrome MV3 扩展：访问 `github.com` 时，自动把 **Release 资源下载�
 2. 右上角开启「开发者模式」
 3. 点「加载已解压的扩展程序」，选择本仓库根目录
 4. 访问任意 GitHub Release 页或仓库「Code」面板即可看到效果
-5. 点扩展图标打开 popup，测速并选择镜像
+5. 点扩展图标打开 popup，查看测速结果并选择镜像
 
 ## 内置镜像（默认）
 
@@ -33,18 +34,48 @@ Chrome MV3 扩展：访问 `github.com` 时，自动把 **Release 资源下载�
 | gh-proxy.com | `https://gh-proxy.com/` |
 | ghps.cc | `https://ghps.cc/` |
 
-镜像站点变化频繁，失效的会显示「超时」，换一个即可。
+镜像站点变化频繁，失效的会显示「超时」或「失效」，换一个即可。
 
 ### 管理镜像（含内置项）
 
 点 popup 底部「管理加速地址」，或到 `chrome://extensions` → 本扩展 → 「详细信息」→「扩展程序选项」打开设置页：
 
 - **添加**：在「添加镜像」表单填入名称（可选）和地址（`http(s)://` 开头），自动补尾斜杠、按地址去重
-- **修改 / 删除**：列表中每项均可行内编辑或删除，**内置项同样可改可删**
+- **修改 / 删除**：列表中每项均可行内编辑或删除，**内置项同样可改可删**（但至少保留一个）
+- **使用中**：当前生效的镜像在列表里有「使用中」徽标
+- **验证**：点「验证」会请求该镜像域名的访问权限，然后真实拉一次下载，确认它到底能不能代理——这是唯一能区分「镜像活着」和「镜像代理不出东西」的办法
 - **恢复默认镜像**：点列表标题旁的按钮，用内置默认列表覆盖当前全部镜像
-- **实时同步**：改动经 `chrome.storage.sync` 广播，popup 与已打开的 GitHub 页面无需刷新即生效
+- **实时同步**：改动经 `chrome.storage` 广播，popup 与已打开的 GitHub 页面无需刷新即生效
 
 > 首次安装时，内置 7 个镜像作为种子写入 `chrome.storage`，之后它们与用户添加的镜像一视同仁，全部可编辑。改 `src/config.js` 的 `PROXIES` 常量只会影响「默认值 / 恢复默认」的来源，不会直接覆盖已存储列表。
+
+## 测速口径
+
+探测请求打在 **`prefix + 一个真实的 GitHub 资源`** 上（`octocat/Hello-World` 的源码归档，258 字节，仓库与分支永久存在），而不是镜像首页。
+
+这样测出来的延迟才等于用户实际下载的耗时。结论分四档：
+
+| 结论 | 含义 |
+|---|---|
+| **已验证** | 读到 HTTP 200 且响应体非空——确认能真正代理下载 |
+| **未验证** | 镜像可达，但没返回 CORS 头，浏览器不给读响应体，无法校验内容 |
+| **失效** | 读到非 200（例如 404）——文件根本代理不出来 |
+| **超时** | 连不上 |
+
+两种请求模式并发发起（CORS + no-cors），单镜像耗时与一次请求相当。
+
+> 镜像没返回 CORS 头时，只能确认「可达」。想要确定结论，在设置页点该镜像的「验证」授予域名权限后即可。
+
+## 存储分区
+
+| 区域 | 存放 | 理由 |
+|---|---|---|
+| `chrome.storage.sync` | `enabled`、`enhanced`、`proxyPrefix`、`userSelected` | 跨设备一致的用户选择 |
+| `chrome.storage.local` | 镜像清单、测速缓存、健康状态 | 与本机网络相关，跨设备同步会互相覆盖 |
+
+升级时镜像清单会自动从 sync 迁到 local。
+
+`userSelected` 记录「用户是否手动选过镜像」：手动选过的镜像会被粘住，测速不会覆盖它。
 
 ## 改写规则
 
@@ -56,27 +87,26 @@ Chrome MV3 扩展：访问 `github.com` 时，自动把 **Release 资源下载�
 
 **不改写**：`raw.githubusercontent.com`、gist、SSH clone、GitHub 首页（`github.com` 无仓库路径）。
 
-> 增强模式开启时，上述三种规则同时生效；关闭时仅 Release 资源 + HTTPS clone 生效。
+clone 地址会被写进三处，缺一不可：`<input>` 的 `value`、`data-clipboard-copy-text` 属性、`<clipboard-copy value="…">`（GitHub 复制按钮真正读取的内容）。
 
 ## 项目结构
 
 ```
-manifest.json          MV3 配置（content script + options_ui + web_accessible_resources）
+manifest.json          MV3 配置（content script + background SW + options_ui）
 src/rewrite.js         纯函数 rewrite(url, prefix, opts) → 加速 URL | null（支持增强模式）
-src/config.js          DEFAULTS / normalizePrefix / getConfig / PROXIES(种子) / 统一镜像存储(get/set/reset) / ping / testProxies
-src/content.js         DOM 扫描 + MutationObserver，动态 import 上面两个 ESM（支持原始 URL 保存/还原 + 增强模式）
-popup/                 镜像 radio 列表 + 测速 UI（含开关、状态、入口按钮）
-  popup.html / .css / .js
-options/               镜像管理页（内置+自定义统一增 / 改 / 删 + 恢复默认）
-  options.html / .css / .js
-tests/                 node:test 单测（rewrite + config）
+src/config.js          默认值 / 存储分区 / 镜像清单 / 真实代理探测 / 择优
+src/content.js         DOM 扫描 + MutationObserver，动态 import 上面两个 ESM
+src/background.js      Service Worker：工具栏徽标、周期体检、故障切换
+popup/                 状态条 + 镜像 radio 列表 + 测速 UI
+options/               镜像管理页（增 / 改 / 删 + 使用中徽标 + 逐镜像验证）
+tests/                 node:test 单测（rewrite + config + 语法守卫）
 ```
 
 ## 开发
 
 ```bash
 # 跑测试（git-bash 上请用显式文件路径，避免目录被当成模块）
-node --test tests/rewrite.test.mjs tests/config.test.mjs
+node --test tests/rewrite.test.mjs tests/config.test.mjs tests/parse.test.mjs
 ```
 
 改完代码后到 `chrome://extensions` 点扩展卡片上的「重新加载」即可生效。
@@ -85,11 +115,22 @@ node --test tests/rewrite.test.mjs tests/config.test.mjs
 
 - `rewrite.js` / `config.js` 是 ESM；MV3 content script 不支持静态 `import`，故 `content.js` 用 `chrome.runtime.getURL()` + 动态 `import()` 引入它们（需在 `manifest.json` 的 `web_accessible_resources` 放行）。
 - 这样纯逻辑能用 `node --test` 真实单测，又满足 MV3 限制。
-- `rewrite(url, prefix, opts)` 把前缀当参数传入，选路逻辑（当前：测速择优）与改写逻辑解耦，后续做故障切换不碰改写。`opts.enhanced` 控制增强模式，开启后匹配所有 GitHub 仓库链接。
-- `content.js` 用 `WeakMap` 保存被改写元素的原始 URL，切换镜像或关闭加速时自动还原，避免前缀叠加。
+- `rewrite(url, prefix, opts)` 把前缀当参数传入，选路逻辑与改写逻辑解耦。
+- `content.js` 用 `WeakMap` 保存被改写元素的原始 URL（同时记下写进去的值，用于识别「元素被外部改过」），切换镜像或关闭加速时自动还原。
+- `content.js` 的 MutationObserver 会忽略「自己写出来的」变更，避免每次改写都多扫一遍全页。
+- **语法守卫**：`tests/parse.test.mjs` 会对每个 `.js` 跑一次 `node --check`。UI 层曾因丢失一行函数声明而整体无法解析，而当时的单测全部通过——纯函数测试挡不住文件级致命错误，语法解析可以。
+
+## 权限
+
+| 权限 | 用途 |
+|---|---|
+| `storage` | 存配置、镜像清单、测速缓存 |
+| `alarms` | 后台定期体检当前镜像 |
+| `host_permissions: github.com` | 内容脚本运行 + 探测目标在 github.com 上 |
+| `optional_host_permissions` | 设置页「验证」按钮按需申请单个镜像域名，用于校验镜像真能否代理 |
 
 ## 限制 / 后续
 
 - 关闭「启用加速」后，已改写的链接会自动还原为原始 URL（无需刷新页面）
-- 增强模式会改写页面中所有 GitHub 仓库链接，范围较广，默认关闭；如需更全面的加速覆盖可在 popup 中开启
+- 增强模式默认关闭；开启后站内导航区（页头/页脚/面包屑/仓库页签）不会被改写
 - 单选模式（一次一个镜像生效）；多选故障切换、后台定时测速、raw/archive 改写均为后续
