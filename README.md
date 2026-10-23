@@ -105,13 +105,13 @@ popup/                 状态条 + 镜像 radio 列表 + 测速 UI
 options/               镜像管理页（增 / 改 / 删 + 使用中徽标 + 逐镜像验证）
 icons/                 设计源文件 icon.svg + 基础图标 + 三种状态色图标（state-on / state-off / state-fail）
 tools/uicheck.mjs      无头 Chrome UI 验收（截图 + 报错/高度闸门）
-tools/make-icons.ps1   由基础图标重新生成三色状态图标
+tools/make-icons.ps1   由 icon.svg 渲染基础图标与三色状态图标
 tests/                 node:test 单测（rewrite + config + 语法守卫）
 ```
 
 ## 工具栏图标
 
-图标底色随运行状态变化，一眼可辨：
+图标是**圆角方块 + GitHub 官方标识**（猫头标镂空，露出底色），底色随运行状态变化，一眼可辨：
 
 | 颜色 | 状态 |
 |---|---|
@@ -130,6 +130,10 @@ powershell -ExecutionPolicy Bypass -File tools/make-icons.ps1
 > 图形全部由**路径**绘制、不含 `<text>`，所以渲染不依赖任何字体，在任何机器上结果一致
 > （旧版图标用 Playfair Display 衬线体，缺字体就会让 "G" 变形）。
 > 改设计只需改 `icons/icon.svg` 一处，然后重跑上面的脚本。
+
+> 猫头标是 GitHub 官方标识，用于表达"与 GitHub 相关"。个人使用、或作为兼容性指示属常规做法；
+> 若将来要上架 Chrome 应用商店，需留意 GitHub 的商标使用条款，届时可改用几何 G 的方案
+> （`icons/icon.svg` 改一处即可）。
 
 ## 开发
 
