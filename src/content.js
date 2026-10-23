@@ -1,9 +1,18 @@
 // src/content.js
 // 在 github.com 上扫描 Release 下载链接与 clone 输入框，原地改写为加速地址。
-// 纯逻辑（rewrite/config）作为 ESM 动态 import（MV3 content script 不支持静态 import）。
+//
+// 两条硬约束（tests/content-guard.test.mjs 会守住）：
+//   1) 不做动态 import，不加载任何扩展内模块。
+//      rewrite() 由 src/rewrite.js 以经典脚本形式先加载（见 manifest 的 content_scripts.js），
+//      挂在隔离世界的 globalThis.GHP_REWRITE 上。
+//      改成经典脚本后，就不必把 src/*.js 放进 web_accessible_resources，
+//      也就不会把扩展源码暴露给 github.com 上的任意页面。
+//   2) 不直接读写 chrome.storage 的数据区。
+//      配置（开关 / 当前镜像 / 增强模式）由 Service Worker 算好后用消息下发，
+//      content script 只发一条 ghp:get-config 消息。
 
 (() => {
-  let rewrite = null;       // (url, prefix, opts) => string | null
+  const { rewrite } = globalThis.GHP_REWRITE || {};
   let proxyPrefix = null;   // 当前生效的代理前缀
   let enhanced = false;     // 增强模式：改写所有 github.com 仓库链接
   let scheduled = false;
@@ -89,7 +98,7 @@ a[data-ghp-accelerated="1"]::after {
 
   /** 全量扫描并改写当前页面。 */
   function process() {
-    if (!proxyPrefix) return;
+    if (!proxyPrefix || typeof rewrite !== 'function') return;
 
     for (const a of document.querySelectorAll('a[href]')) {
       const cur = a.href;                       // 绝对 URL
@@ -141,30 +150,61 @@ a[data-ghp-accelerated="1"]::after {
     setTimeout(() => { scheduled = false; process(); }, 200);
   }
 
+  /**
+   * 向 Service Worker 要当前配置。
+   * Service Worker 那边已经把"生效前缀"的兜底逻辑（同步过来的前缀不在本机镜像清单里时
+   * 回退到清单首项）算好了，这里拿到的就是最终生效值。
+   * @returns {Promise<{enabled:boolean, enhanced:boolean, proxyPrefix:string|null}|null>}
+   */
+  function requestConfig() {
+    return new Promise((resolve) => {
+      let settled = false;
+      const done = (v) => { if (!settled) { settled = true; resolve(v); } };
+      try {
+        chrome.runtime.sendMessage({ type: 'ghp:get-config' }, (res) => {
+          // 必须在回调里读 lastError，否则控制台会刷 "Unchecked runtime.lastError"
+          const err = chrome.runtime.lastError;
+          if (err) {
+            console.warn('[github-proxy] 取配置失败:', err.message);
+            done(null);
+            return;
+          }
+          done(res || null);
+        });
+      } catch (err) {
+        console.warn('[github-proxy] 取配置失败:', err);
+        done(null);
+      }
+    });
+  }
+
+  /** 用下发的配置重算生效状态，并按需还原 / 重写页面。 */
+  async function applyConfig() {
+    const cfg = await requestConfig();
+    if (!cfg) return;
+
+    const wasEnabled = proxyPrefix !== null;
+    proxyPrefix = cfg.enabled ? (cfg.proxyPrefix || null) : null;
+    enhanced = cfg.enhanced === true;
+
+    if (!proxyPrefix) {
+      // 禁用加速：还原所有已改写链接
+      if (wasEnabled) restoreAll();
+    } else {
+      // 切换镜像或启用加速：先还原再重新改写，避免前缀叠加
+      restoreAll();
+      process();
+    }
+  }
+
   (async () => {
     try {
-      const base = chrome.runtime.getURL('src/');
-      rewrite = (await import(base + 'rewrite.js')).rewrite;
-      const { getConfig, resolveActivePrefix } = await import(base + 'config.js');
+      if (typeof rewrite !== 'function') {
+        console.error('[github-proxy] 未加载到 rewrite 模块，检查 manifest 的 content_scripts.js 顺序');
+        return;
+      }
 
       injectMarkerStyle();
-
-      async function applyConfig() {
-        const cfg = await getConfig();
-        const wasEnabled = proxyPrefix !== null;
-        // 生效前缀可能已被从镜像清单里删掉（清单在 local 区，可能与 sync 同步的前缀不同步）
-        const prefix = cfg.enabled ? await resolveActivePrefix() : null;
-        proxyPrefix = prefix;                  // 禁用 → 停止改写
-        enhanced = cfg.enhanced === true;
-        if (!proxyPrefix) {
-          // 禁用加速：还原所有已改写链接
-          if (wasEnabled) restoreAll();
-        } else {
-          // 切换镜像或启用加速：先还原再重新改写，避免前缀叠加
-          restoreAll();
-          process();
-        }
-      }
 
       await applyConfig();                                     // 首次全量
       new MutationObserver((records) => {
@@ -185,6 +225,7 @@ a[data-ghp-accelerated="1"]::after {
       });
 
       // popup / 设置页改配置后实时生效（镜像切换/增强模式/开关/清单变更），免刷新。
+      // 这里只监听变更事件、不读数据区：具体值仍由 Service Worker 计算后下发。
       // sync 区放开关与当前镜像，local 区放镜像清单。
       chrome.storage.onChanged.addListener((changes, area) => {
         if (area !== 'sync' && area !== 'local') return;

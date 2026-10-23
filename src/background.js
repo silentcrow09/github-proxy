@@ -122,6 +122,29 @@ async function pruneHealth() {
   if (changed) await setHealth(health);
 }
 
+// ---- 给 content script 提供配置 ----
+// content script 不直接读 chrome.storage：它跑在页面的隔离世界里，
+// 存储的读取与"生效前缀"的兜底逻辑都放在这里，content script 只发一条消息。
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (!msg || msg.type !== 'ghp:get-config') return;   // 不是我们的消息，交给其它监听器
+  (async () => {
+    try {
+      const cfg = await getConfig();
+      // 生效前缀可能已被从镜像清单里删掉（清单在 local 区，可能与 sync 同步的前缀不同步）
+      const prefix = cfg.enabled ? await resolveActivePrefix() : null;
+      sendResponse({
+        enabled: cfg.enabled === true,
+        enhanced: cfg.enhanced === true,
+        proxyPrefix: prefix,
+      });
+    } catch (err) {
+      console.error('[github-proxy] 读取配置失败', err);
+      sendResponse(null);
+    }
+  })();
+  return true;   // 异步响应
+});
+
 // ---- 生命周期 ----
 // 监听器里的 async 函数返回的 Promise 不会被 Chrome 接管，
 // 一旦抛错就是 "Uncaught (in promise)"，所以这里统一兜住。

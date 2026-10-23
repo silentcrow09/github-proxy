@@ -1,6 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { rewrite } from '../src/rewrite.js';
+import { createRequire } from 'node:module';
+
+// src/rewrite.js 是"经典脚本 + Node 可 require"的双模文件：
+// 浏览器里作为经典脚本先加载（挂在 globalThis.GHP_REWRITE），
+// Node 里用 createRequire 拿具名导出。
+const require = createRequire(import.meta.url);
+const { rewrite } = require('../src/rewrite.js');
 
 const P = 'https://gh-proxy.org/';
 const P2 = 'https://ghproxy.net/';

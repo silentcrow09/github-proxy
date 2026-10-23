@@ -139,15 +139,18 @@ powershell -ExecutionPolicy Bypass -File tools/make-icons.ps1
 
 ```bash
 # 跑测试（git-bash 上请用显式文件路径，避免目录被当成模块）
-node --test tests/rewrite.test.mjs tests/config.test.mjs tests/parse.test.mjs
+node --test tests/rewrite.test.mjs tests/config.test.mjs tests/parse.test.mjs tests/content-guard.test.mjs
 ```
 
 改完代码后到 `chrome://extensions` 点扩展卡片上的「重新加载」即可生效。
 
 ## 技术说明
 
-- `rewrite.js` / `config.js` 是 ESM；MV3 content script 不支持静态 `import`，故 `content.js` 用 `chrome.runtime.getURL()` + 动态 `import()` 引入它们（需在 `manifest.json` 的 `web_accessible_resources` 放行）。
-- 这样纯逻辑能用 `node --test` 真实单测，又满足 MV3 限制。
+- `rewrite.js` / `config.js` 是 ESM。MV3 content script 不支持静态 `import`，因此：
+  - `rewrite.js` 做成**双模文件**——浏览器里作为**经典脚本**列在 `manifest.json` 的 `content_scripts.js`（排在 `content.js` 之前），运行在扩展的隔离世界，函数挂在 `globalThis.GHP_REWRITE`；Node 里用 `createRequire` 引入拿具名导出。
+  - `config.js` 只给 Service Worker / popup / 设置页用；**content script 不再直接读 `chrome.storage`**，配置由 Service Worker 算好后用 `ghp:get-config` 消息下发。
+- 早先 content script 用 `chrome.runtime.getURL()` + 动态 `import()` 引入这两个模块。那条路要求把它们放进 `web_accessible_resources`，等于**把扩展源码公开给 github.com 上的任意页面**（任何脚本都能 `fetch(chrome-extension://<id>/src/config.js)`）。改成经典脚本后这条暴露面消失，`manifest.json` 里已不再有 `web_accessible_resources`。
+- **架构守卫**：`tests/content-guard.test.mjs` 守住上面三条——content script 不得出现动态 `import()`、不得直接访问存储数据区、manifest 不得再暴露 `src/` 下的源码。
 - `rewrite(url, prefix, opts)` 把前缀当参数传入，选路逻辑与改写逻辑解耦。
 - `content.js` 用 `WeakMap` 保存被改写元素的原始 URL（同时记下写进去的值，用于识别「元素被外部改过」），切换镜像或关闭加速时自动还原。
 - `content.js` 的 MutationObserver 会忽略「自己写出来的」变更，避免每次改写都多扫一遍全页。
